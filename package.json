@@ -1,0 +1,16 @@
+{
+  "name": "studybase",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @studybase/api",
+    "dev:api": "npm run start:dev --workspace @studybase/api",
+    "dev:web": "npm run dev --workspace @studybase/web",
+    "build": "npm run build --workspace @studybase/api && npm run build --workspace @studybase/web",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down -v"
+  }
+}
