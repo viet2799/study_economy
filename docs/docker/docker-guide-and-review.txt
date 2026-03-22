@@ -1,0 +1,477 @@
+DOCKER: HƯỚNG DẪN VIẾT ĐÚNG VÀ REVIEW REPO HIỆN TẠI
+
+Tài liệu này có 2 mục tiêu:
+1. Dạy tư duy và cách viết Docker/Docker Compose một cách đúng và để ứng dụng thật.
+2. Review các file Docker hiện có trong repo và giải thích ý nghĩa từng phần để bạn hiểu rõ.
+
+Kết luận nhanh:
+- Các file Docker hiện tại chưa ổn để dùng ngay cho team.
+- Chúng đúng hướng cho base project, nhưng vẫn còn điểm chặn run/build thực tế.
+- Vấn đề rõ nhất là phụ thuộc vào file `.env` thật, readiness chưa được đảm bảo, và dependency install trong Dockerfile chưa tối ưu cho monorepo.
+
+==================================================
+MỤC 1. DẠY TƯỜNG TẬN VỀ CÁCH VIẾT DOCKER
+==================================================
+
+1. Docker dùng để làm gì
+
+Docker dùng để đóng gói ứng dụng cùng môi trường chạy của nó thành một image.
+Khi chạy image đó thành container, bạn có một môi trường giống nhau giữa local, CI và server.
+Điều quan trọng nhất là tính lặp lại: cùng một image thì ở đâu cũng phải cho ra hành vi như nhau.
+
+2. Ba khái niệm cần nắm chắc
+
+- Image: bản đóng gói đã build xong.
+- Container: instance đang chạy của image.
+- Volume: nơi lưu dữ liệu bên ngoài vòng đời của container.
+
+Nếu nhớ một câu:
+Image là khuôn, container là bản sao đang chạy, volume là nơi giữ dữ liệu để xóa container xong dữ liệu vẫn còn.
+
+3. Dockerfile là gì
+
+Dockerfile là công thức để build image.
+Bạn đọc Dockerfile từ trên xuống dưới.
+Mỗi lệnh tạo ra một layer.
+Layer nào đổi thì các layer bên dưới có thể bị build lại.
+Vì vậy thứ tự lệnh ảnh hưởng trực tiếp đến tốc độ build.
+
+4. Các lệnh quan trọng nhất trong Dockerfile
+
+- FROM
+  Chọn image gốc. Mỗi stage build thường bắt đầu bằng FROM.
+
+- WORKDIR
+  Đặt thư mục làm việc mặc định bên trong image.
+  Sau lệnh này, các lệnh COPY/RUN/CMD sẽ làm việc từ thư mục đó.
+
+- COPY
+  Chép file từ máy host vào image.
+  Thứ tự COPY rất quan trọng vì ảnh hưởng build cache.
+
+- RUN
+  Thực thi lệnh lúc build.
+  Thường dùng để cài dependency, build app, tạo artifact.
+
+- ENV
+  Đặt biến môi trường trong image.
+
+- EXPOSE
+  Mô tả cổng mà app sẽ lắng nghe.
+  Lưu ý: nó không tự động publish port ra bên ngoài.
+
+- CMD
+  Lệnh mặc định khi container chạy.
+  Thường dùng để start app.
+
+- ENTRYPOINT
+  Lệnh gốc của container.
+  Dùng khi muốn ép container luôn chạy một binary/script cụ thể.
+
+5. Cách viết Dockerfile đúng tư duy
+
+Tư duy nên là:
+1. Chọn base image phù hợp.
+2. Đặt WORKDIR rõ ràng.
+3. COPY các file dependency trước để tận dụng cache build.
+4. Cài dependency.
+5. Mới COPY source code còn lại.
+6. Build artifact.
+7. Dùng multi-stage để stage cuối chỉ giữ những gì cần cho runtime.
+
+6. Tại sao build cache quan trọng
+
+Nếu bạn COPY `. .` quá sớm, chỉ cần sửa một file nhỏ là Docker có thể phải cài lại toàn bộ dependency.
+Cách đúng là copy `package.json` và lockfile trước, chạy install, rồi mới copy code.
+Như vậy, khi code đổi mà dependency không đổi, Docker có thể dùng lại layer đã install.
+
+7. Multi-stage build là gì
+
+Multi-stage build nghĩa là bạn có nhiều FROM trong cùng một Dockerfile.
+Thường sẽ có:
+- deps stage: cài dependency
+- builder stage: compile/build source
+- runner stage: chỉ giữ artifact và dependency cần để chạy
+
+Lợi ích:
+- image runtime nhẹ hơn
+- startup gọn hơn
+- ít bề mặt tấn công hơn
+
+8. Những thứ rất quan trọng khi viết Dockerfile cho Node.js
+
+- Phải có lockfile nếu muốn build lặp lại, ví dụ `package-lock.json`.
+- Nếu là monorepo, phải copy đúng root manifest và workspace manifests.
+- Không nên để image runtime mang quá nhiều source không cần thiết.
+- Cần rõ app start bằng lệnh nào, cần artifact nào, có cần migration khi start hay không.
+- Nên có `.dockerignore` để tránh gửi cả `.git`, log, cache, file build tạm vào build context.
+
+9. Docker Compose dùng để làm gì
+
+Docker Compose giúp khai báo nhiều service cùng lúc.
+Trong repo này, nó dùng để dựng một lúc:
+- Postgres
+- Redis
+- Kafka
+- Keycloak
+- API
+- Web
+
+Nó rất hợp cho local dev vì một lệnh có thể dựng cả hệ thống.
+
+10. Các trường quan trọng trong docker-compose
+
+- image
+  Dùng image có sẵn.
+
+- build
+  Build image từ Dockerfile.
+
+- ports
+  Map cổng giữa máy host và container.
+
+- environment
+  Biến môi trường đưa vào container.
+
+- env_file
+  Nạp biến môi trường từ file.
+
+- volumes
+  Gắn thư mục/volume để giữ dữ liệu hoặc mount file.
+
+- depends_on
+  Chỉ cho biết thứ tự start cơ bản.
+  Không đảm bảo service đã sẵn sàng để nhận kết nối.
+
+- healthcheck
+  Kiểm tra service đã thực sự ready chưa.
+
+11. Điều người mới rất dễ hiểu nhầm
+
+`depends_on` không có nghĩa là "database đã sẵn sàng".
+Nó chỉ có nghĩa là Docker sẽ start container theo thứ tự.
+Ứng dụng vẫn có thể lỗi nếu database chưa mở socket, chưa tạo schema hoặc Keycloak chưa boot xong.
+
+12. Env và secrets cần viết như nào
+
+Trong local dev:
+- `.env.example` để mô tả các biến cần có
+- `.env` thật để chạy local
+
+Trong production:
+- không hard-code secret trong Dockerfile
+- không nên phụ thuộc vào file `.env` commit trong repo
+- nên đưa qua secret manager, CI/CD variables hoặc hệ thống deploy
+
+Nguyên tắc:
+- `.env.example` là tài liệu
+- `.env` là file local
+- Dockerfile không nên chứa secret thật
+- Compose có thể override env để đổi hostnames giữa local host và network nội bộ container
+
+13. Khi nào cần healthcheck
+
+Hệ thống này có nhiều service phụ thuộc nhau.
+Vì vậy healthcheck rất quan trọng.
+Nếu không có healthcheck:
+- API có thể start khi Postgres chưa ready
+- Keycloak có thể chưa import realm xong
+- Web có thể gọi API khi API chưa thực sự listen
+
+14. Migration trong container nên nghĩ như nào
+
+Chạy migration ngay lúc app start là cách nhanh cho local, nhưng cần thận trọng:
+- Nếu scale nhiều replica, tất cả replica có thể cùng tranh nhau chạy migration
+- Nếu migration fail, app không start
+- Production nên tách migration thành job hoặc step riêng
+
+Cho repo này:
+- Local dev có thể chấp nhận startup kèm migration
+- Production thì nên tách ra rõ ràng
+
+==================================================
+MỤC 2. REVIEW CÁC FILE DOCKER VÀ GIẢI THÍCH CHI TIẾT
+==================================================
+
+A. Tổng quan đánh giá
+
+Repo hiện có 3 file chính:
+- docker-compose.yml
+- apps/api/Dockerfile
+- apps/web/Dockerfile
+
+Hướng viết là hợp lý ở mức độ base project:
+- đã tách service
+- đã có multi-stage build
+- đã có volume cho Postgres
+- đã có import realm cho Keycloak
+
+Nhưng để nói "ổn" thì chưa đủ.
+Vẫn còn các vấn đề cần fix để hệ thống này dễ clone về và chạy ổn định.
+
+B. Review docker-compose.yml
+
+File này định nghĩa 6 service:
+- postgres
+- redis
+- kafka
+- keycloak
+- api
+- web
+
+Đây là một bộ setup đúng hướng cho local full stack.
+
+1. Postgres
+
+Service Postgres dùng image `postgres:16-alpine`.
+Map cổng `5432:5432`.
+Mount volume vào `/var/lib/postgresql/data`.
+
+Ý nghĩa:
+- image Alpine nhẹ
+- port 5432 để máy host kết nối được
+- volume giữ dữ liệu sau khi recreate container
+
+Mount thêm `./docker/postgres/init` vào `/docker-entrypoint-initdb.d` là cách đúng.
+Nó cho phép chạy script SQL lúc volume mới được tạo.
+
+2. Redis
+
+Redis hiện tại là local setup cơ bản:
+- không có volume
+- không password
+- không command tùy chỉnh
+
+Cho local dev thì tạm được.
+Cho production thì không đủ.
+
+3. Kafka
+
+Kafka đang dùng Bitnami và KRaft mode.
+Ý nghĩa các biến quan trọng:
+- `KAFKA_ENABLE_KRAFT=yes`
+  Bật chế độ không cần Zookeeper.
+- `KAFKA_CFG_PROCESS_ROLES=broker,controller`
+  Một node vừa là broker vừa là controller.
+- `KAFKA_CFG_LISTENERS`
+  Khai báo các listener nội bộ.
+- `KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092`
+  Container khác trong compose sẽ gọi Kafka qua tên service `kafka`.
+
+Cho local 1-node thì chấp nhận được.
+Cho production thì chưa phù hợp.
+
+4. Keycloak
+
+Keycloak start bằng:
+- `start-dev`
+- `--import-realm`
+
+Nó dùng Postgres làm DB và mount `./realm` vào đường dẫn import.
+
+Ý nghĩa:
+- local dev sẽ lên auth nhanh
+- team clone repo có thể có realm mẫu để test
+
+Điểm cần nhớ:
+Keycloak boot chậm.
+Nếu API phụ thuộc nó ngay khi start mà không có readiness strategy, API có thể lỗi dù container Keycloak đã được start.
+
+5. API service
+
+API build từ `apps/api/Dockerfile`.
+Nó có `depends_on` các service cần thiết.
+Nó override env để dùng hostname nội bộ container network:
+- `postgres` thay vì `localhost`
+- `redis` thay vì `localhost`
+- `kafka` thay vì `localhost`
+- `keycloak` thay vì `localhost`
+
+Đây là cách viết đúng cho container networking.
+
+Vấn đề lớn nhất:
+Service này có:
+- env_file:
+  - .env
+
+Trong repo hiện tại, không có file `.env`.
+Chỉ có `.env.example`.
+Điều này làm `docker compose` fail ngay nếu người mới clone repo chạy thử.
+
+6. Web service
+
+Web build từ `apps/web/Dockerfile`.
+Nó khai báo:
+- `NEXT_PUBLIC_API_URL=http://localhost:3001`
+- `NEXT_PUBLIC_SOCKET_URL=http://localhost:3001`
+- `NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8080`
+
+Phần này hợp lý cho browser.
+Trình duyệt của người dùng cần gọi vào host port của máy, không gọi tên service nội bộ như `api` hay `keycloak`.
+
+7. Điểm tốt của docker-compose hiện tại
+
+- Đã tách đúng các service local stack.
+- Đã dùng tên service nội bộ đúng cách cho API.
+- Đã có volume Postgres.
+- Đã mount script init Postgres.
+- Đã mount realm import cho Keycloak.
+- Đã giữ `NEXT_PUBLIC_*` theo host URL, phù hợp cho browser.
+
+8. Điểm chưa ổn của docker-compose hiện tại
+
+- Phụ thuộc vào `.env` thật, trong khi repo mới có `.env.example`.
+- Không có healthcheck cho Postgres, Redis, Kafka, Keycloak, API, Web.
+- `depends_on` chỉ là start-order, không đảm bảo readiness.
+- Không có profile tách local dev và local full stack.
+- Chưa có strategy log rotation hay observability local.
+
+C. Review apps/api/Dockerfile
+
+Dockerfile API dùng multi-stage gồm 3 stage:
+- deps
+- builder
+- runner
+
+1. Stage deps
+
+Nó làm các việc sau:
+- chọn `node:20-alpine`
+- `WORKDIR /app`
+- `COPY package.json` root
+- `COPY apps/api/package.json`
+- `RUN npm install`
+
+Ý nghĩa:
+- đặt nền monorepo trong `/app`
+- cài dependency để các stage sau dùng lại
+
+Điểm đúng:
+- đã có ý tưởng tận dụng cache dependency
+
+Điểm chưa ổn:
+- không copy `package-lock.json`, nên build chưa thật sự reproducible
+- với monorepo, cần lockfile và workspace manifests đầy đủ để install ổn định
+- chưa có `.dockerignore`
+
+2. Stage builder
+
+Nó làm:
+- copy `node_modules` từ deps
+- copy toàn bộ source
+- chạy `prisma generate`
+- chạy build NestJS
+
+Ý nghĩa:
+- build artifact từ source thật
+- generate Prisma client trước khi build app
+
+Đây là flow đúng cho NestJS + Prisma.
+
+3. Stage runner
+
+Nó làm:
+- đặt `NODE_ENV=production`
+- copy `node_modules`
+- copy `dist`
+- copy `package.json` của api
+- copy thư mục `prisma`
+- `EXPOSE 3001`
+- `CMD` chạy:
+  `cd /app/apps/api && npx prisma generate && npx prisma migrate deploy && node dist/main`
+
+Ý nghĩa:
+- start runtime image
+- đảm bảo Prisma client có sẵn
+- deploy migration rồi mới start app
+
+Tradeoff:
+- app startup phụ thuộc trực tiếp vào database readiness
+- migration lỗi thì app chết
+- nếu sau này scale nhiều replica, tất cả replica có thể đều chạy migration
+
+Đánh giá API Dockerfile:
+- Tốt: multi-stage, build flow rõ, có Prisma generate
+- Chưa tốt: thiếu lockfile, thiếu `.dockerignore`, startup gom migration + app run, chưa có readiness story
+
+D. Review apps/web/Dockerfile
+
+Dockerfile web cũng dùng multi-stage.
+Nó build Next.js standalone.
+Đây là hướng đúng cho runtime image gọn hơn.
+
+1. Stage deps
+
+Nó:
+- copy `package.json` root
+- copy `apps/web/package.json`
+- `npm install`
+
+Vấn đề giống API:
+- thiếu `package-lock.json`
+- build reproducibility chưa tốt
+
+2. Stage builder
+
+Nó:
+- copy `node_modules`
+- copy source
+- build workspace `@studybase/web`
+
+Vì trong `apps/web/next.config.mjs` có `output: 'standalone'`, Next.js sẽ tạo bộ runtime tối giản.
+
+3. Stage runner
+
+Nó:
+- đặt `NODE_ENV=production`
+- copy `node_modules`
+- copy `.next/standalone` vào `apps/web`
+- copy `.next/static`
+- copy `public`
+- start bằng `node apps/web/server.js`
+
+Ý nghĩa:
+- dùng standalone server của Next.js
+- copy các static assets cần thiết
+
+Đánh giá Web Dockerfile:
+- Tốt: dùng standalone, multi-stage, runtime gọn hơn build stage
+- Chưa tốt: lặp lại vấn đề lockfile, thiếu `.dockerignore`, copy `node_modules` vào runner chưa tối ưu nhất
+
+E. Kết luận review
+
+Nếu hỏi "các file Docker đã ổn chưa?" thì câu trả lời ngắn gọn là:
+
+Chưa ổn để dùng ngay cho team và chưa đủ chất lượng để gọi là production-ready.
+Nó đang ở mức base setup có thể học và mở rộng, nhưng cần fix thêm trước khi xem là stack local ổn định.
+
+F. Thứ tự ưu tiên nên sửa
+
+1. Giải quyết bài toán `.env`
+   Compose không được fail ngay khi repo chưa có file local.
+
+2. Thêm `.dockerignore`
+   Để giảm build context và tránh copy rác vào image.
+
+3. Chốt cách install dependency dùng lockfile
+   Để build lặp lại được.
+
+4. Thêm healthcheck và readiness strategy
+   Ưu tiên Postgres, Keycloak, API.
+
+5. Tách migration startup cho local và production
+   Local có thể để nhanh, production phải kỷ luật hơn.
+
+6. Bổ sung log/metrics/tracing
+   Nếu muốn dùng stack này để phát triển commerce core nghiêm túc.
+
+G. Góc nhìn DevOps cho commerce core
+
+Vì dự án này đi theo hướng commerce core trước, hạ tầng local không cần quá nhiều "đồ cho đẹp", nhưng nhất định phải khóa được 5 điểm:
+- Postgres boot ổn định, migration rõ ràng
+- Redis lên được để test cache/session
+- Kafka lên được để test outbox và event relay
+- Keycloak có realm import ổn định
+- API không chết oan vì service phụ chưa ready
+
+Nếu 5 điểm này chưa khóa xong, việc build thêm module commerce sẽ rất dễ mất thời gian vì lỗi vận hành local thay vì lỗi nghiệp vụ.

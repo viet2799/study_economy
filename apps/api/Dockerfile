@@ -19,4 +19,4 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 EXPOSE 3001
-CMD ["sh", "-c", "cd /app/apps/api && npx prisma generate && npx prisma db push && node dist/main"]
+CMD ["sh", "-c", "cd /app/apps/api && npx prisma generate && npx prisma migrate deploy && node dist/main"]

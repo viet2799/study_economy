@@ -1,0 +1,493 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.4">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Light'}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Light'; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">DOCKER: HƯỚNG DẪN VIẾT ĐÚNG VÀ REVIEW REPO HIỆN TẠI</p>
+<p class="p2"><br></p>
+<p class="p1">Tài liệu này có 2 mục tiêu:</p>
+<p class="p1">1. Dạy tư duy và cách viết Docker/Docker Compose một cách đúng và để ứng dụng thật.</p>
+<p class="p1">2. Review các file Docker hiện có trong repo và giải thích ý nghĩa từng phần để bạn hiểu rõ.</p>
+<p class="p2"><br></p>
+<p class="p1">Kết luận nhanh:</p>
+<p class="p1">- Các file Docker hiện tại chưa ổn để dùng ngay cho team.</p>
+<p class="p1">- Chúng đúng hướng cho base project, nhưng vẫn còn điểm chặn run/build thực tế.</p>
+<p class="p1">- Vấn đề rõ nhất là phụ thuộc vào file `.env` thật, readiness chưa được đảm bảo, và dependency install trong Dockerfile chưa tối ưu cho monorepo.</p>
+<p class="p2"><br></p>
+<p class="p1">==================================================</p>
+<p class="p1">MỤC 1. DẠY TƯỜNG TẬN VỀ CÁCH VIẾT DOCKER</p>
+<p class="p1">==================================================</p>
+<p class="p2"><br></p>
+<p class="p1">1. Docker dùng để làm gì</p>
+<p class="p2"><br></p>
+<p class="p1">Docker dùng để đóng gói ứng dụng cùng môi trường chạy của nó thành một image.</p>
+<p class="p1">Khi chạy image đó thành container, bạn có một môi trường giống nhau giữa local, CI và server.</p>
+<p class="p1">Điều quan trọng nhất là tính lặp lại: cùng một image thì ở đâu cũng phải cho ra hành vi như nhau.</p>
+<p class="p2"><br></p>
+<p class="p1">2. Ba khái niệm cần nắm chắc</p>
+<p class="p2"><br></p>
+<p class="p1">- Image: bản đóng gói đã build xong.</p>
+<p class="p1">- Container: instance đang chạy của image.</p>
+<p class="p1">- Volume: nơi lưu dữ liệu bên ngoài vòng đời của container.</p>
+<p class="p2"><br></p>
+<p class="p1">Nếu nhớ một câu:</p>
+<p class="p1">Image là khuôn, container là bản sao đang chạy, volume là nơi giữ dữ liệu để xóa container xong dữ liệu vẫn còn.</p>
+<p class="p2"><br></p>
+<p class="p1">3. Dockerfile là gì</p>
+<p class="p2"><br></p>
+<p class="p1">Dockerfile là công thức để build image.</p>
+<p class="p1">Bạn đọc Dockerfile từ trên xuống dưới.</p>
+<p class="p1">Mỗi lệnh tạo ra một layer.</p>
+<p class="p1">Layer nào đổi thì các layer bên dưới có thể bị build lại.</p>
+<p class="p1">Vì vậy thứ tự lệnh ảnh hưởng trực tiếp đến tốc độ build.</p>
+<p class="p2"><br></p>
+<p class="p1">4. Các lệnh quan trọng nhất trong Dockerfile</p>
+<p class="p2"><br></p>
+<p class="p1">- FROM</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Chọn image gốc. Mỗi stage build thường bắt đầu bằng FROM.</p>
+<p class="p2"><br></p>
+<p class="p1">- WORKDIR</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Đặt thư mục làm việc mặc định bên trong image.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Sau lệnh này, các lệnh COPY/RUN/CMD sẽ làm việc từ thư mục đó.</p>
+<p class="p2"><br></p>
+<p class="p1">- COPY</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Chép file từ máy host vào image.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Thứ tự COPY rất quan trọng vì ảnh hưởng build cache.</p>
+<p class="p2"><br></p>
+<p class="p1">- RUN</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Thực thi lệnh lúc build.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Thường dùng để cài dependency, build app, tạo artifact.</p>
+<p class="p2"><br></p>
+<p class="p1">- ENV</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Đặt biến môi trường trong image.</p>
+<p class="p2"><br></p>
+<p class="p1">- EXPOSE</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Mô tả cổng mà app sẽ lắng nghe.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Lưu ý: nó không tự động publish port ra bên ngoài.</p>
+<p class="p2"><br></p>
+<p class="p1">- CMD</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Lệnh mặc định khi container chạy.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Thường dùng để start app.</p>
+<p class="p2"><br></p>
+<p class="p1">- ENTRYPOINT</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Lệnh gốc của container.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Dùng khi muốn ép container luôn chạy một binary/script cụ thể.</p>
+<p class="p2"><br></p>
+<p class="p1">5. Cách viết Dockerfile đúng tư duy</p>
+<p class="p2"><br></p>
+<p class="p1">Tư duy nên là:</p>
+<p class="p1">1. Chọn base image phù hợp.</p>
+<p class="p1">2. Đặt WORKDIR rõ ràng.</p>
+<p class="p1">3. COPY các file dependency trước để tận dụng cache build.</p>
+<p class="p1">4. Cài dependency.</p>
+<p class="p1">5. Mới COPY source code còn lại.</p>
+<p class="p1">6. Build artifact.</p>
+<p class="p1">7. Dùng multi-stage để stage cuối chỉ giữ những gì cần cho runtime.</p>
+<p class="p2"><br></p>
+<p class="p1">6. Tại sao build cache quan trọng</p>
+<p class="p2"><br></p>
+<p class="p1">Nếu bạn COPY `. .` quá sớm, chỉ cần sửa một file nhỏ là Docker có thể phải cài lại toàn bộ dependency.</p>
+<p class="p1">Cách đúng là copy `package.json` và lockfile trước, chạy install, rồi mới copy code.</p>
+<p class="p1">Như vậy, khi code đổi mà dependency không đổi, Docker có thể dùng lại layer đã install.</p>
+<p class="p2"><br></p>
+<p class="p1">7. Multi-stage build là gì</p>
+<p class="p2"><br></p>
+<p class="p1">Multi-stage build nghĩa là bạn có nhiều FROM trong cùng một Dockerfile.</p>
+<p class="p1">Thường sẽ có:</p>
+<p class="p1">- deps stage: cài dependency</p>
+<p class="p1">- builder stage: compile/build source</p>
+<p class="p1">- runner stage: chỉ giữ artifact và dependency cần để chạy</p>
+<p class="p2"><br></p>
+<p class="p1">Lợi ích:</p>
+<p class="p1">- image runtime nhẹ hơn</p>
+<p class="p1">- startup gọn hơn</p>
+<p class="p1">- ít bề mặt tấn công hơn</p>
+<p class="p2"><br></p>
+<p class="p1">8. Những thứ rất quan trọng khi viết Dockerfile cho Node.js</p>
+<p class="p2"><br></p>
+<p class="p1">- Phải có lockfile nếu muốn build lặp lại, ví dụ `package-lock.json`.</p>
+<p class="p1">- Nếu là monorepo, phải copy đúng root manifest và workspace manifests.</p>
+<p class="p1">- Không nên để image runtime mang quá nhiều source không cần thiết.</p>
+<p class="p1">- Cần rõ app start bằng lệnh nào, cần artifact nào, có cần migration khi start hay không.</p>
+<p class="p1">- Nên có `.dockerignore` để tránh gửi cả `.git`, log, cache, file build tạm vào build context.</p>
+<p class="p2"><br></p>
+<p class="p1">9. Docker Compose dùng để làm gì</p>
+<p class="p2"><br></p>
+<p class="p1">Docker Compose giúp khai báo nhiều service cùng lúc.</p>
+<p class="p1">Trong repo này, nó dùng để dựng một lúc:</p>
+<p class="p1">- Postgres</p>
+<p class="p1">- Redis</p>
+<p class="p1">- Kafka</p>
+<p class="p1">- Keycloak</p>
+<p class="p1">- API</p>
+<p class="p1">- Web</p>
+<p class="p2"><br></p>
+<p class="p1">Nó rất hợp cho local dev vì một lệnh có thể dựng cả hệ thống.</p>
+<p class="p2"><br></p>
+<p class="p1">10. Các trường quan trọng trong docker-compose</p>
+<p class="p2"><br></p>
+<p class="p1">- image</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Dùng image có sẵn.</p>
+<p class="p2"><br></p>
+<p class="p1">- build</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Build image từ Dockerfile.</p>
+<p class="p2"><br></p>
+<p class="p1">- ports</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Map cổng giữa máy host và container.</p>
+<p class="p2"><br></p>
+<p class="p1">- environment</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Biến môi trường đưa vào container.</p>
+<p class="p2"><br></p>
+<p class="p1">- env_file</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Nạp biến môi trường từ file.</p>
+<p class="p2"><br></p>
+<p class="p1">- volumes</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Gắn thư mục/volume để giữ dữ liệu hoặc mount file.</p>
+<p class="p2"><br></p>
+<p class="p1">- depends_on</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Chỉ cho biết thứ tự start cơ bản.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Không đảm bảo service đã sẵn sàng để nhận kết nối.</p>
+<p class="p2"><br></p>
+<p class="p1">- healthcheck</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Kiểm tra service đã thực sự ready chưa.</p>
+<p class="p2"><br></p>
+<p class="p1">11. Điều người mới rất dễ hiểu nhầm</p>
+<p class="p2"><br></p>
+<p class="p1">`depends_on` không có nghĩa là "database đã sẵn sàng".</p>
+<p class="p1">Nó chỉ có nghĩa là Docker sẽ start container theo thứ tự.</p>
+<p class="p1">Ứng dụng vẫn có thể lỗi nếu database chưa mở socket, chưa tạo schema hoặc Keycloak chưa boot xong.</p>
+<p class="p2"><br></p>
+<p class="p1">12. Env và secrets cần viết như nào</p>
+<p class="p2"><br></p>
+<p class="p1">Trong local dev:</p>
+<p class="p1">- `.env.example` để mô tả các biến cần có</p>
+<p class="p1">- `.env` thật để chạy local</p>
+<p class="p2"><br></p>
+<p class="p1">Trong production:</p>
+<p class="p1">- không hard-code secret trong Dockerfile</p>
+<p class="p1">- không nên phụ thuộc vào file `.env` commit trong repo</p>
+<p class="p1">- nên đưa qua secret manager, CI/CD variables hoặc hệ thống deploy</p>
+<p class="p2"><br></p>
+<p class="p1">Nguyên tắc:</p>
+<p class="p1">- `.env.example` là tài liệu</p>
+<p class="p1">- `.env` là file local</p>
+<p class="p1">- Dockerfile không nên chứa secret thật</p>
+<p class="p1">- Compose có thể override env để đổi hostnames giữa local host và network nội bộ container</p>
+<p class="p2"><br></p>
+<p class="p1">13. Khi nào cần healthcheck</p>
+<p class="p2"><br></p>
+<p class="p1">Hệ thống này có nhiều service phụ thuộc nhau.</p>
+<p class="p1">Vì vậy healthcheck rất quan trọng.</p>
+<p class="p1">Nếu không có healthcheck:</p>
+<p class="p1">- API có thể start khi Postgres chưa ready</p>
+<p class="p1">- Keycloak có thể chưa import realm xong</p>
+<p class="p1">- Web có thể gọi API khi API chưa thực sự listen</p>
+<p class="p2"><br></p>
+<p class="p1">14. Migration trong container nên nghĩ như nào</p>
+<p class="p2"><br></p>
+<p class="p1">Chạy migration ngay lúc app start là cách nhanh cho local, nhưng cần thận trọng:</p>
+<p class="p1">- Nếu scale nhiều replica, tất cả replica có thể cùng tranh nhau chạy migration</p>
+<p class="p1">- Nếu migration fail, app không start</p>
+<p class="p1">- Production nên tách migration thành job hoặc step riêng</p>
+<p class="p2"><br></p>
+<p class="p1">Cho repo này:</p>
+<p class="p1">- Local dev có thể chấp nhận startup kèm migration</p>
+<p class="p1">- Production thì nên tách ra rõ ràng</p>
+<p class="p2"><br></p>
+<p class="p1">==================================================</p>
+<p class="p1">MỤC 2. REVIEW CÁC FILE DOCKER VÀ GIẢI THÍCH CHI TIẾT</p>
+<p class="p1">==================================================</p>
+<p class="p2"><br></p>
+<p class="p1">A. Tổng quan đánh giá</p>
+<p class="p2"><br></p>
+<p class="p1">Repo hiện có 3 file chính:</p>
+<p class="p1">- docker-compose.yml</p>
+<p class="p1">- apps/api/Dockerfile</p>
+<p class="p1">- apps/web/Dockerfile</p>
+<p class="p2"><br></p>
+<p class="p1">Hướng viết là hợp lý ở mức độ base project:</p>
+<p class="p1">- đã tách service</p>
+<p class="p1">- đã có multi-stage build</p>
+<p class="p1">- đã có volume cho Postgres</p>
+<p class="p1">- đã có import realm cho Keycloak</p>
+<p class="p2"><br></p>
+<p class="p1">Nhưng để nói "ổn" thì chưa đủ.</p>
+<p class="p1">Vẫn còn các vấn đề cần fix để hệ thống này dễ clone về và chạy ổn định.</p>
+<p class="p2"><br></p>
+<p class="p1">B. Review docker-compose.yml</p>
+<p class="p2"><br></p>
+<p class="p1">File này định nghĩa 6 service:</p>
+<p class="p1">- postgres</p>
+<p class="p1">- redis</p>
+<p class="p1">- kafka</p>
+<p class="p1">- keycloak</p>
+<p class="p1">- api</p>
+<p class="p1">- web</p>
+<p class="p2"><br></p>
+<p class="p1">Đây là một bộ setup đúng hướng cho local full stack.</p>
+<p class="p2"><br></p>
+<p class="p1">1. Postgres</p>
+<p class="p2"><br></p>
+<p class="p1">Service Postgres dùng image `postgres:16-alpine`.</p>
+<p class="p1">Map cổng `5432:5432`.</p>
+<p class="p1">Mount volume vào `/var/lib/postgresql/data`.</p>
+<p class="p2"><br></p>
+<p class="p1">Ý nghĩa:</p>
+<p class="p1">- image Alpine nhẹ</p>
+<p class="p1">- port 5432 để máy host kết nối được</p>
+<p class="p1">- volume giữ dữ liệu sau khi recreate container</p>
+<p class="p2"><br></p>
+<p class="p1">Mount thêm `./docker/postgres/init` vào `/docker-entrypoint-initdb.d` là cách đúng.</p>
+<p class="p1">Nó cho phép chạy script SQL lúc volume mới được tạo.</p>
+<p class="p2"><br></p>
+<p class="p1">2. Redis</p>
+<p class="p2"><br></p>
+<p class="p1">Redis hiện tại là local setup cơ bản:</p>
+<p class="p1">- không có volume</p>
+<p class="p1">- không password</p>
+<p class="p1">- không command tùy chỉnh</p>
+<p class="p2"><br></p>
+<p class="p1">Cho local dev thì tạm được.</p>
+<p class="p1">Cho production thì không đủ.</p>
+<p class="p2"><br></p>
+<p class="p1">3. Kafka</p>
+<p class="p2"><br></p>
+<p class="p1">Kafka đang dùng Bitnami và KRaft mode.</p>
+<p class="p1">Ý nghĩa các biến quan trọng:</p>
+<p class="p1">- `KAFKA_ENABLE_KRAFT=yes`</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Bật chế độ không cần Zookeeper.</p>
+<p class="p1">- `KAFKA_CFG_PROCESS_ROLES=broker,controller`</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Một node vừa là broker vừa là controller.</p>
+<p class="p1">- `KAFKA_CFG_LISTENERS`</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Khai báo các listener nội bộ.</p>
+<p class="p1">- `KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092`</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Container khác trong compose sẽ gọi Kafka qua tên service `kafka`.</p>
+<p class="p2"><br></p>
+<p class="p1">Cho local 1-node thì chấp nhận được.</p>
+<p class="p1">Cho production thì chưa phù hợp.</p>
+<p class="p2"><br></p>
+<p class="p1">4. Keycloak</p>
+<p class="p2"><br></p>
+<p class="p1">Keycloak start bằng:</p>
+<p class="p1">- `start-dev`</p>
+<p class="p1">- `--import-realm`</p>
+<p class="p2"><br></p>
+<p class="p1">Nó dùng Postgres làm DB và mount `./realm` vào đường dẫn import.</p>
+<p class="p2"><br></p>
+<p class="p1">Ý nghĩa:</p>
+<p class="p1">- local dev sẽ lên auth nhanh</p>
+<p class="p1">- team clone repo có thể có realm mẫu để test</p>
+<p class="p2"><br></p>
+<p class="p1">Điểm cần nhớ:</p>
+<p class="p1">Keycloak boot chậm.</p>
+<p class="p1">Nếu API phụ thuộc nó ngay khi start mà không có readiness strategy, API có thể lỗi dù container Keycloak đã được start.</p>
+<p class="p2"><br></p>
+<p class="p1">5. API service</p>
+<p class="p2"><br></p>
+<p class="p1">API build từ `apps/api/Dockerfile`.</p>
+<p class="p1">Nó có `depends_on` các service cần thiết.</p>
+<p class="p1">Nó override env để dùng hostname nội bộ container network:</p>
+<p class="p1">- `postgres` thay vì `localhost`</p>
+<p class="p1">- `redis` thay vì `localhost`</p>
+<p class="p1">- `kafka` thay vì `localhost`</p>
+<p class="p1">- `keycloak` thay vì `localhost`</p>
+<p class="p2"><br></p>
+<p class="p1">Đây là cách viết đúng cho container networking.</p>
+<p class="p2"><br></p>
+<p class="p1">Vấn đề lớn nhất:</p>
+<p class="p1">Service này có:</p>
+<p class="p1">- env_file:</p>
+<p class="p1"><span class="Apple-converted-space">  </span>- .env</p>
+<p class="p2"><br></p>
+<p class="p1">Trong repo hiện tại, không có file `.env`.</p>
+<p class="p1">Chỉ có `.env.example`.</p>
+<p class="p1">Điều này làm `docker compose` fail ngay nếu người mới clone repo chạy thử.</p>
+<p class="p2"><br></p>
+<p class="p1">6. Web service</p>
+<p class="p2"><br></p>
+<p class="p1">Web build từ `apps/web/Dockerfile`.</p>
+<p class="p1">Nó khai báo:</p>
+<p class="p1">- `NEXT_PUBLIC_API_URL=http://localhost:3001`</p>
+<p class="p1">- `NEXT_PUBLIC_SOCKET_URL=http://localhost:3001`</p>
+<p class="p1">- `NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8080`</p>
+<p class="p2"><br></p>
+<p class="p1">Phần này hợp lý cho browser.</p>
+<p class="p1">Trình duyệt của người dùng cần gọi vào host port của máy, không gọi tên service nội bộ như `api` hay `keycloak`.</p>
+<p class="p2"><br></p>
+<p class="p1">7. Điểm tốt của docker-compose hiện tại</p>
+<p class="p2"><br></p>
+<p class="p1">- Đã tách đúng các service local stack.</p>
+<p class="p1">- Đã dùng tên service nội bộ đúng cách cho API.</p>
+<p class="p1">- Đã có volume Postgres.</p>
+<p class="p1">- Đã mount script init Postgres.</p>
+<p class="p1">- Đã mount realm import cho Keycloak.</p>
+<p class="p1">- Đã giữ `NEXT_PUBLIC_*` theo host URL, phù hợp cho browser.</p>
+<p class="p2"><br></p>
+<p class="p1">8. Điểm chưa ổn của docker-compose hiện tại</p>
+<p class="p2"><br></p>
+<p class="p1">- Phụ thuộc vào `.env` thật, trong khi repo mới có `.env.example`.</p>
+<p class="p1">- Không có healthcheck cho Postgres, Redis, Kafka, Keycloak, API, Web.</p>
+<p class="p1">- `depends_on` chỉ là start-order, không đảm bảo readiness.</p>
+<p class="p1">- Không có profile tách local dev và local full stack.</p>
+<p class="p1">- Chưa có strategy log rotation hay observability local.</p>
+<p class="p2"><br></p>
+<p class="p1">C. Review apps/api/Dockerfile</p>
+<p class="p2"><br></p>
+<p class="p1">Dockerfile API dùng multi-stage gồm 3 stage:</p>
+<p class="p1">- deps</p>
+<p class="p1">- builder</p>
+<p class="p1">- runner</p>
+<p class="p2"><br></p>
+<p class="p1">1. Stage deps</p>
+<p class="p2"><br></p>
+<p class="p1">Nó làm các việc sau:</p>
+<p class="p1">- chọn `node:20-alpine`</p>
+<p class="p1">- `WORKDIR /app`</p>
+<p class="p1">- `COPY package.json` root</p>
+<p class="p1">- `COPY apps/api/package.json`</p>
+<p class="p1">- `RUN npm install`</p>
+<p class="p2"><br></p>
+<p class="p1">Ý nghĩa:</p>
+<p class="p1">- đặt nền monorepo trong `/app`</p>
+<p class="p1">- cài dependency để các stage sau dùng lại</p>
+<p class="p2"><br></p>
+<p class="p1">Điểm đúng:</p>
+<p class="p1">- đã có ý tưởng tận dụng cache dependency</p>
+<p class="p2"><br></p>
+<p class="p1">Điểm chưa ổn:</p>
+<p class="p1">- không copy `package-lock.json`, nên build chưa thật sự reproducible</p>
+<p class="p1">- với monorepo, cần lockfile và workspace manifests đầy đủ để install ổn định</p>
+<p class="p1">- chưa có `.dockerignore`</p>
+<p class="p2"><br></p>
+<p class="p1">2. Stage builder</p>
+<p class="p2"><br></p>
+<p class="p1">Nó làm:</p>
+<p class="p1">- copy `node_modules` từ deps</p>
+<p class="p1">- copy toàn bộ source</p>
+<p class="p1">- chạy `prisma generate`</p>
+<p class="p1">- chạy build NestJS</p>
+<p class="p2"><br></p>
+<p class="p1">Ý nghĩa:</p>
+<p class="p1">- build artifact từ source thật</p>
+<p class="p1">- generate Prisma client trước khi build app</p>
+<p class="p2"><br></p>
+<p class="p1">Đây là flow đúng cho NestJS + Prisma.</p>
+<p class="p2"><br></p>
+<p class="p1">3. Stage runner</p>
+<p class="p2"><br></p>
+<p class="p1">Nó làm:</p>
+<p class="p1">- đặt `NODE_ENV=production`</p>
+<p class="p1">- copy `node_modules`</p>
+<p class="p1">- copy `dist`</p>
+<p class="p1">- copy `package.json` của api</p>
+<p class="p1">- copy thư mục `prisma`</p>
+<p class="p1">- `EXPOSE 3001`</p>
+<p class="p1">- `CMD` chạy:</p>
+<p class="p1"><span class="Apple-converted-space">  </span>`cd /app/apps/api &amp;&amp; npx prisma generate &amp;&amp; npx prisma migrate deploy &amp;&amp; node dist/main`</p>
+<p class="p2"><br></p>
+<p class="p1">Ý nghĩa:</p>
+<p class="p1">- start runtime image</p>
+<p class="p1">- đảm bảo Prisma client có sẵn</p>
+<p class="p1">- deploy migration rồi mới start app</p>
+<p class="p2"><br></p>
+<p class="p1">Tradeoff:</p>
+<p class="p1">- app startup phụ thuộc trực tiếp vào database readiness</p>
+<p class="p1">- migration lỗi thì app chết</p>
+<p class="p1">- nếu sau này scale nhiều replica, tất cả replica có thể đều chạy migration</p>
+<p class="p2"><br></p>
+<p class="p1">Đánh giá API Dockerfile:</p>
+<p class="p1">- Tốt: multi-stage, build flow rõ, có Prisma generate</p>
+<p class="p1">- Chưa tốt: thiếu lockfile, thiếu `.dockerignore`, startup gom migration + app run, chưa có readiness story</p>
+<p class="p2"><br></p>
+<p class="p1">D. Review apps/web/Dockerfile</p>
+<p class="p2"><br></p>
+<p class="p1">Dockerfile web cũng dùng multi-stage.</p>
+<p class="p1">Nó build Next.js standalone.</p>
+<p class="p1">Đây là hướng đúng cho runtime image gọn hơn.</p>
+<p class="p2"><br></p>
+<p class="p1">1. Stage deps</p>
+<p class="p2"><br></p>
+<p class="p1">Nó:</p>
+<p class="p1">- copy `package.json` root</p>
+<p class="p1">- copy `apps/web/package.json`</p>
+<p class="p1">- `npm install`</p>
+<p class="p2"><br></p>
+<p class="p1">Vấn đề giống API:</p>
+<p class="p1">- thiếu `package-lock.json`</p>
+<p class="p1">- build reproducibility chưa tốt</p>
+<p class="p2"><br></p>
+<p class="p1">2. Stage builder</p>
+<p class="p2"><br></p>
+<p class="p1">Nó:</p>
+<p class="p1">- copy `node_modules`</p>
+<p class="p1">- copy source</p>
+<p class="p1">- build workspace `@studybase/web`</p>
+<p class="p2"><br></p>
+<p class="p1">Vì trong `apps/web/next.config.mjs` có `output: 'standalone'`, Next.js sẽ tạo bộ runtime tối giản.</p>
+<p class="p2"><br></p>
+<p class="p1">3. Stage runner</p>
+<p class="p2"><br></p>
+<p class="p1">Nó:</p>
+<p class="p1">- đặt `NODE_ENV=production`</p>
+<p class="p1">- copy `node_modules`</p>
+<p class="p1">- copy `.next/standalone` vào `apps/web`</p>
+<p class="p1">- copy `.next/static`</p>
+<p class="p1">- copy `public`</p>
+<p class="p1">- start bằng `node apps/web/server.js`</p>
+<p class="p2"><br></p>
+<p class="p1">Ý nghĩa:</p>
+<p class="p1">- dùng standalone server của Next.js</p>
+<p class="p1">- copy các static assets cần thiết</p>
+<p class="p2"><br></p>
+<p class="p1">Đánh giá Web Dockerfile:</p>
+<p class="p1">- Tốt: dùng standalone, multi-stage, runtime gọn hơn build stage</p>
+<p class="p1">- Chưa tốt: lặp lại vấn đề lockfile, thiếu `.dockerignore`, copy `node_modules` vào runner chưa tối ưu nhất</p>
+<p class="p2"><br></p>
+<p class="p1">E. Kết luận review</p>
+<p class="p2"><br></p>
+<p class="p1">Nếu hỏi "các file Docker đã ổn chưa?" thì câu trả lời ngắn gọn là:</p>
+<p class="p2"><br></p>
+<p class="p1">Chưa ổn để dùng ngay cho team và chưa đủ chất lượng để gọi là production-ready.</p>
+<p class="p1">Nó đang ở mức base setup có thể học và mở rộng, nhưng cần fix thêm trước khi xem là stack local ổn định.</p>
+<p class="p2"><br></p>
+<p class="p1">F. Thứ tự ưu tiên nên sửa</p>
+<p class="p2"><br></p>
+<p class="p1">1. Giải quyết bài toán `.env`</p>
+<p class="p1"><span class="Apple-converted-space">   </span>Compose không được fail ngay khi repo chưa có file local.</p>
+<p class="p2"><br></p>
+<p class="p1">2. Thêm `.dockerignore`</p>
+<p class="p1"><span class="Apple-converted-space">   </span>Để giảm build context và tránh copy rác vào image.</p>
+<p class="p2"><br></p>
+<p class="p1">3. Chốt cách install dependency dùng lockfile</p>
+<p class="p1"><span class="Apple-converted-space">   </span>Để build lặp lại được.</p>
+<p class="p2"><br></p>
+<p class="p1">4. Thêm healthcheck và readiness strategy</p>
+<p class="p1"><span class="Apple-converted-space">   </span>Ưu tiên Postgres, Keycloak, API.</p>
+<p class="p2"><br></p>
+<p class="p1">5. Tách migration startup cho local và production</p>
+<p class="p1"><span class="Apple-converted-space">   </span>Local có thể để nhanh, production phải kỷ luật hơn.</p>
+<p class="p2"><br></p>
+<p class="p1">6. Bổ sung log/metrics/tracing</p>
+<p class="p1"><span class="Apple-converted-space">   </span>Nếu muốn dùng stack này để phát triển commerce core nghiêm túc.</p>
+<p class="p2"><br></p>
+<p class="p1">G. Góc nhìn DevOps cho commerce core</p>
+<p class="p2"><br></p>
+<p class="p1">Vì dự án này đi theo hướng commerce core trước, hạ tầng local không cần quá nhiều "đồ cho đẹp", nhưng nhất định phải khóa được 5 điểm:</p>
+<p class="p1">- Postgres boot ổn định, migration rõ ràng</p>
+<p class="p1">- Redis lên được để test cache/session</p>
+<p class="p1">- Kafka lên được để test outbox và event relay</p>
+<p class="p1">- Keycloak có realm import ổn định</p>
+<p class="p1">- API không chết oan vì service phụ chưa ready</p>
+<p class="p2"><br></p>
+<p class="p1">Nếu 5 điểm này chưa khóa xong, việc build thêm module commerce sẽ rất dễ mất thời gian vì lỗi vận hành local thay vì lỗi nghiệp vụ.</p>
+</body>
+</html>

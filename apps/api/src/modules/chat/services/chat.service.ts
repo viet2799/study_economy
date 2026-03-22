@@ -26,7 +26,7 @@ export class ChatService {
         roomId: dto.roomId,
         message: dto.message,
         userId: user.sub,
-        username: user.preferred_username ?? user.email ?? user.sub
+        username: user.username ?? user.email ?? user.sub
       }
     });
 

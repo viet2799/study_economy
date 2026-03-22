@@ -1,9 +1,9 @@
 export interface CurrentUser {
   sub: string;
-  preferred_username?: string;
+  username?: string;
   email?: string;
-  scope?: string;
-  realm_access?: {
-    roles: string[];
-  };
+  firstName?: string;
+  lastName?: string;
+  roles: string[];
+  resourceAccess: Record<string, string[]>;
 }

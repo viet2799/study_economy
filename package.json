@@ -10,7 +10,12 @@
     "dev:api": "npm run start:dev --workspace @studybase/api",
     "dev:web": "npm run dev --workspace @studybase/web",
     "build": "npm run build --workspace @studybase/api && npm run build --workspace @studybase/web",
+    "lint:web": "npm run lint --workspace @studybase/web",
+    "test:web": "npm run test --workspace @studybase/web",
+    "test:e2e:web": "npm run test:e2e --workspace @studybase/web",
+    "typecheck:web": "npm run typecheck --workspace @studybase/web",
     "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down -v"
+    "docker:down": "docker compose down -v",
+    "prepare": "husky"
   }
 }

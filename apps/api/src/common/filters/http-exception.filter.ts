@@ -5,28 +5,52 @@ import {
   HttpException,
   HttpStatus
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { HttpAdapterHost } from '@nestjs/core';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  constructor(
+    private readonly httpAdapterHost: HttpAdapterHost,
+    private readonly configService: ConfigService
+  ) {}
+
   catch(exception: unknown, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse();
     const request = host.switchToHttp().getRequest();
+    const { httpAdapter } = this.httpAdapterHost;
 
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    const exceptionResponse =
+      exception instanceof HttpException ? exception.getResponse() : null;
+    const isProduction = this.configService.get<string>('nodeEnv') === 'production';
     const message =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : 'Internal server error';
+      typeof exceptionResponse === 'string'
+        ? exceptionResponse
+        : (exceptionResponse as { message?: string | string[] } | null)?.message ??
+          'Internal server error';
+    const error =
+      typeof exceptionResponse === 'object' &&
+      exceptionResponse &&
+      'error' in exceptionResponse
+        ? String((exceptionResponse as { error?: string }).error)
+        : HttpStatus[status];
 
-    response.status(status).json({
-      statusCode: status,
-      message,
-      path: request.url,
-      timestamp: new Date().toISOString()
-    });
+    httpAdapter.reply(
+      host.switchToHttp().getResponse(),
+      {
+        statusCode: status,
+        status: 'error',
+        message,
+        error,
+        path: request.url,
+        timestamp: new Date().toISOString(),
+        ...(isProduction ? {} : { details: exceptionResponse })
+      },
+      status
+    );
   }
 }

@@ -7,11 +7,15 @@ export interface AppEnv {
   kafkaClientId: string;
   kafkaGroupId: string;
   kafkaChatTopic: string;
-  keycloakUrl: string;
+  keycloakAuthServerUrl: string;
   keycloakRealm: string;
-  keycloakClientIds: string[];
-  keycloakClientSecret: string;
+  keycloakClientId: string;
+  keycloakSecret: string;
+  keycloakRealmPublicKey?: string;
   corsOrigins: string[];
+  swaggerEnabled: boolean;
+  logLevel: string;
+  logFilePath?: string;
 }
 
 const get = (name: string, fallback?: string): string => {
@@ -31,14 +35,16 @@ export const appEnv = (): AppEnv => ({
   kafkaClientId: get('KAFKA_CLIENT_ID', 'studybase-api'),
   kafkaGroupId: get('KAFKA_GROUP_ID', 'studybase-group'),
   kafkaChatTopic: get('KAFKA_CHAT_TOPIC', 'chat.messages'),
-  keycloakUrl: get('KEYCLOAK_URL'),
+  keycloakAuthServerUrl: get('KEYCLOAK_AUTH_SERVER_URL'),
   keycloakRealm: get('KEYCLOAK_REALM'),
-  keycloakClientIds: get('KEYCLOAK_CLIENT_ID')
-    .split(',')
-    .map((value) => value.trim()),
-  keycloakClientSecret: get('KEYCLOAK_CLIENT_SECRET'),
+  keycloakClientId: get('KEYCLOAK_CLIENT_ID'),
+  keycloakSecret: get('KEYCLOAK_SECRET'),
+  keycloakRealmPublicKey: process.env.KEYCLOAK_REALM_PUBLIC_KEY,
   corsOrigins: [
     process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000',
     'http://localhost:3000'
-  ]
+  ],
+  swaggerEnabled: process.env.SWAGGER_ENABLED !== 'false',
+  logLevel: process.env.LOG_LEVEL ?? 'info',
+  logFilePath: process.env.LOG_FILE_PATH
 });

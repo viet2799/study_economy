@@ -17,3 +17,15 @@ model ChatMessage {
 
   @@index([roomId, createdAt])
 }
+
+model User {
+  id         String   @id @default(cuid())
+  keycloakId String   @unique
+  email      String?  @unique
+  username   String?
+  firstName  String?
+  lastName   String?
+  roles      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
